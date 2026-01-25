@@ -8,7 +8,6 @@ import (
 	"strings"
 )
 
-// Entry stores password info
 type Entry struct {
 	Site     string
 	Username string
@@ -31,7 +30,7 @@ func main() {
 		return
 	}
 
-	// Verify master password on subsequent runs
+	// Verify
 	if !verifyMasterPassword(scanner, hashFile) {
 		fmt.Println("Access denied. Exiting.")
 		return
@@ -116,3 +115,4 @@ func verifyMasterPassword(scanner *bufio.Scanner, filename string) bool {
 	}
 	return false
 }
+
