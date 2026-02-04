@@ -3,9 +3,14 @@ package main
 import (
 	"bufio"
 	"fmt"
-	"golang.org/x/crypto/bcrypt"
+	"crypto/aes"
+    "crypto/cipher"
+    "crypto/rand"
+    "io"
 	"os"
 	"strings"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 type Entry struct {
@@ -53,7 +58,21 @@ func main() {
 
 		switch choice {
 		case "1":
-			fmt.Println("Add Entry selected (functionality coming soon)")
+			fmt.Println("Enter the site name: ")
+			var siteName string
+			fmt.Scanln(&siteName)
+			fmt.Printf("Enter your password for the site %s: ",siteName)
+			var passwordForSite string
+			fmt.Scanln(&passwordForSite)
+
+			
+
+
+
+			// newEntry := Entry{
+			// 	Site: siteName,
+
+			// }
 		case "2":
 			fmt.Println("Get Entry selected (functionality coming soon)")
 		case "3":
