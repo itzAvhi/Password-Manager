@@ -1,3 +1,14 @@
 masterHash.txt
 passwords.json
 password-manager
+
+
+*.exe~
+
+.vscode/
+.idea/
+*.swp
+*.swo
+
+*.tmp
+*.log
