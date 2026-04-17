@@ -2,7 +2,12 @@ package main
 
 import (
 	"bufio"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
 	"fmt"
+	"io"
+	"log"
 	"os"
 	"strings"
 
@@ -128,6 +133,39 @@ func verifyMasterPassword(scanner *bufio.Scanner, filename string) bool {
 	return false
 }
 
-func derriveKey(password string,salt []byte) []byte {
-	return argon2.IDKey([]byte(password),salt,1,64*1024,4,32)
+func deriveKey(password string, salt []byte) []byte {
+	return argon2.IDKey([]byte(password), salt, 1, 64*1024, 4, 32)
+}
+
+func encrypt(data []byte, key []byte) ([]byte, error) {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		log.Println("Error encryping the data", err)
+	}
+	gcm, err := cipher.NewGCM(block)
+
+	if err != nil {
+		log.Println("Error encrypting the data(proabally a GCM error): ", err)
+	}
+	nonce := make([]byte, gcm.NonceSize())
+	io.ReadFull(rand.Reader, nonce)
+	return gcm.Seal(nonce, nonce, data, nil), nil
+
+}
+
+func decrypt(encryptedData []byte, key []byte) ([]byte, error) {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		log.Fatal("error decrypting the data: ", err)
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		log.Println("error generating the NEWGCM")
+
+	}
+	nonceSize := gcm.NonceSize()
+	nonce, ciphertext := encryptedData[:nonceSize], encryptedData[nonceSize:]
+
+	return gcm.Open(nil, nonce, ciphertext, nil)
+
 }
