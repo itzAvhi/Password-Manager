@@ -5,9 +5,10 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"strings"
 
@@ -16,19 +17,25 @@ import (
 )
 
 type Entry struct {
-	Site     string
-	Username string
-	Password string
+	Site     string `json:"site"`
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+type StoredData struct {
+	Entries []Entry `json:"entries"`
 }
 
 func main() {
 	scanner := bufio.NewScanner(os.Stdin)
 	hashFile := "masterHash.txt"
+	dataFile := "passwords.json"
+	var masterPassword string
 
-	// Check if master hash file exists
+	//mastar password setup
 	_, err := os.Stat(hashFile)
 	if os.IsNotExist(err) {
-		// File does not exist, setup master password
+		// if file not exist
 		setupMasterPassword(scanner, hashFile)
 		fmt.Println("Master password set! Please restart the program.")
 		return
@@ -37,13 +44,14 @@ func main() {
 		return
 	}
 
-	// Verify
-	if !verifyMasterPassword(scanner, hashFile) {
+	// Verify the passqword
+	masterPassword, verified := verifyMasterPasswordWithReturn(scanner, hashFile)
+	if !verified {
 		fmt.Println("Access denied. Exiting.")
 		return
 	}
 
-	// If password verified, continue to CLI menu
+	// If password verifesd
 	for {
 		fmt.Println("\nPassword Manager")
 		fmt.Println("1. Add Entry")
@@ -60,21 +68,11 @@ func main() {
 
 		switch choice {
 		case "1":
-			fmt.Println("Enter the site name: ")
-			var siteName string
-			fmt.Scanln(&siteName)
-			fmt.Printf("Enter your password for the site %s: ", siteName)
-			var passwordForSite string
-			fmt.Scanln(&passwordForSite)
-
-			// newEntry := Entry{
-			// 	Site: siteName,
-
-			// }
+			addEntryUI(scanner, masterPassword, dataFile)
 		case "2":
-			fmt.Println("Get Entry selected (functionality coming soon)")
+			getEntryUI(scanner, masterPassword, dataFile)
 		case "3":
-			fmt.Println("Delete Entry selected (functionality coming soon)")
+			deleteEntryUI(scanner, masterPassword, dataFile)
 		case "4":
 			fmt.Println("Exiting... Goodbye!")
 			return
@@ -133,6 +131,28 @@ func verifyMasterPassword(scanner *bufio.Scanner, filename string) bool {
 	return false
 }
 
+func verifyMasterPasswordWithReturn(scanner *bufio.Scanner, filename string) (string, bool) {
+	hashed, err := os.ReadFile(filename)
+	if err != nil {
+		fmt.Println("Error reading password hash:", err)
+		return "", false
+	}
+
+	for attempts := 0; attempts < 3; attempts++ {
+		fmt.Print("Enter master password: ")
+		var input string
+		fmt.Scanln(&input)
+
+		err := bcrypt.CompareHashAndPassword(hashed, []byte(input))
+		if err == nil {
+			fmt.Println("Access granted!")
+			return input, true
+		}
+		fmt.Println("Incorrect password. Try again.")
+	}
+	return "", false
+}
+
 func deriveKey(password string, salt []byte) []byte {
 	return argon2.IDKey([]byte(password), salt, 1, 64*1024, 4, 32)
 }
@@ -140,32 +160,193 @@ func deriveKey(password string, salt []byte) []byte {
 func encrypt(data []byte, key []byte) ([]byte, error) {
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		log.Println("Error encryping the data", err)
+		return nil, fmt.Errorf("error creating cipher: %v", err)
 	}
 	gcm, err := cipher.NewGCM(block)
-
 	if err != nil {
-		log.Println("Error encrypting the data(proabally a GCM error): ", err)
+		return nil, fmt.Errorf("error creating GCM: %v", err)
 	}
 	nonce := make([]byte, gcm.NonceSize())
-	io.ReadFull(rand.Reader, nonce)
+	_, err = io.ReadFull(rand.Reader, nonce)
+	if err != nil {
+		return nil, fmt.Errorf("error generating nonce: %v", err)
+	}
 	return gcm.Seal(nonce, nonce, data, nil), nil
-
 }
 
 func decrypt(encryptedData []byte, key []byte) ([]byte, error) {
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		log.Fatal("error decrypting the data: ", err)
+		return nil, fmt.Errorf("error creating cipher: %v", err)
 	}
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
-		log.Println("error generating the NEWGCM")
-
+		return nil, fmt.Errorf("error creating GCM: %v", err)
 	}
 	nonceSize := gcm.NonceSize()
+	if len(encryptedData) < nonceSize {
+		return nil, fmt.Errorf("encrypted data too short")
+	}
 	nonce, ciphertext := encryptedData[:nonceSize], encryptedData[nonceSize:]
-
 	return gcm.Open(nil, nonce, ciphertext, nil)
+}
 
+// loadEntries loads and decrypts entries from the password file
+func loadEntries(masterPassword, filename string) ([]Entry, error) {
+	// Generate salt and key
+	salt := []byte("fixed-salt-32-bytes-for-demo")
+	key := deriveKey(masterPassword, salt)
+
+	// Check if file exists
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []Entry{}, nil // Return empty list if file doesn't exist
+		}
+		return nil, err
+	}
+
+	// Decode from base64
+	encryptedBytes, err := base64.StdEncoding.DecodeString(string(data))
+	if err != nil {
+		return nil, err
+	}
+
+	// Decrypt
+	decryptedData, err := decrypt(encryptedBytes, key)
+	if err != nil {
+		return nil, err
+	}
+
+	// Unmarshal JSON
+	var stored StoredData
+	err = json.Unmarshal(decryptedData, &stored)
+	if err != nil {
+		return nil, err
+	}
+
+	return stored.Entries, nil
+}
+
+// saveEntries encrypts and saves entries to the password file
+func saveEntries(masterPassword, filename string, entries []Entry) error {
+	// Generate salt and key
+	salt := []byte("fixed-salt-32-bytes-for-demo")
+	key := deriveKey(masterPassword, salt)
+
+	// Marshal to JSON
+	stored := StoredData{Entries: entries}
+	jsonData, err := json.Marshal(stored)
+	if err != nil {
+		return err
+	}
+
+	// Encrypt
+	encryptedBytes, err := encrypt(jsonData, key)
+	if err != nil {
+		return err
+	}
+
+	// Encode to base64
+	encoded := base64.StdEncoding.EncodeToString(encryptedBytes)
+
+	// Write to file
+	err = os.WriteFile(filename, []byte(encoded), 0600)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// addEntryUI handles the UI for adding a new entry
+func addEntryUI(scanner *bufio.Scanner, masterPassword, dataFile string) {
+	fmt.Print("Enter site name: ")
+	var site string
+	fmt.Scanln(&site)
+
+	fmt.Print("Enter username: ")
+	var username string
+	fmt.Scanln(&username)
+
+	fmt.Print("Enter password: ")
+	var password string
+	fmt.Scanln(&password)
+
+	// Load existing entries
+	entries, err := loadEntries(masterPassword, dataFile)
+	if err != nil {
+		fmt.Println("Error loading entries:", err)
+		return
+	}
+
+	// Add new entry
+	newEntry := Entry{Site: site, Username: username, Password: password}
+	entries = append(entries, newEntry)
+
+	// Save entries
+	err = saveEntries(masterPassword, dataFile, entries)
+	if err != nil {
+		fmt.Println("Error saving entry:", err)
+		return
+	}
+
+	fmt.Println("Entry added successfully!")
+}
+
+// getEntryUI handles the UI for retrieving an entry
+func getEntryUI(scanner *bufio.Scanner, masterPassword, dataFile string) {
+	fmt.Print("Enter site name to retrieve: ")
+	var site string
+	fmt.Scanln(&site)
+
+	// Load entries
+	entries, err := loadEntries(masterPassword, dataFile)
+	if err != nil {
+		fmt.Println("Error loading entries:", err)
+		return
+	}
+
+	// Find entry
+	for _, entry := range entries {
+		if entry.Site == site {
+			fmt.Printf("Site: %s\n", entry.Site)
+			fmt.Printf("Username: %s\n", entry.Username)
+			fmt.Printf("Password: %s\n", entry.Password)
+			return
+		}
+	}
+
+	fmt.Println("Entry not found.")
+}
+
+// deleteEntryUI handles the UI for deleting an entry
+func deleteEntryUI(scanner *bufio.Scanner, masterPassword, dataFile string) {
+	fmt.Print("Enter site name to delete: ")
+	var site string
+	fmt.Scanln(&site)
+
+	// Load entries
+	entries, err := loadEntries(masterPassword, dataFile)
+	if err != nil {
+		fmt.Println("Error loading entries:", err)
+		return
+	}
+
+	// Find and remove entry
+	for i, entry := range entries {
+		if entry.Site == site {
+			entries = append(entries[:i], entries[i+1:]...)
+			// Save updated entries
+			err = saveEntries(masterPassword, dataFile, entries)
+			if err != nil {
+				fmt.Println("Error saving entries:", err)
+				return
+			}
+			fmt.Println("Entry deleted successfully!")
+			return
+		}
+	}
+
+	fmt.Println("Entry not found.")
 }
