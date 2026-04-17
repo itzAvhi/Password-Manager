@@ -3,13 +3,10 @@ package main
 import (
 	"bufio"
 	"fmt"
-	"crypto/aes"
-    "crypto/cipher"
-    "crypto/rand"
-    "io"
 	"os"
 	"strings"
 
+	"golang.org/x/crypto/argon2"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -61,13 +58,9 @@ func main() {
 			fmt.Println("Enter the site name: ")
 			var siteName string
 			fmt.Scanln(&siteName)
-			fmt.Printf("Enter your password for the site %s: ",siteName)
+			fmt.Printf("Enter your password for the site %s: ", siteName)
 			var passwordForSite string
 			fmt.Scanln(&passwordForSite)
-
-			
-
-
 
 			// newEntry := Entry{
 			// 	Site: siteName,
@@ -135,3 +128,6 @@ func verifyMasterPassword(scanner *bufio.Scanner, filename string) bool {
 	return false
 }
 
+func derriveKey(password string,salt []byte) []byte {
+	return argon2.IDKey([]byte(password),salt,1,64*1024,4,32)
+}
