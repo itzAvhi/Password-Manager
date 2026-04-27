@@ -57,7 +57,10 @@ func main() {
 		fmt.Println("1. Add Entry")
 		fmt.Println("2. Get Entry")
 		fmt.Println("3. Delete Entry")
-		fmt.Println("4. Exit")
+		fmt.Println("4. Search Entries")
+		fmt.Println("5. Generate Password")
+		fmt.Println("6. List All Sites")
+		fmt.Println("7. Exit")
 		fmt.Print("Select an option: ")
 
 		if !scanner.Scan() {
@@ -74,6 +77,12 @@ func main() {
 		case "3":
 			deleteEntryUI(scanner, masterPassword, dataFile)
 		case "4":
+			searchEntriesUI(scanner, masterPassword, dataFile)
+		case "5":
+			generatePasswordUI()
+		case "6":
+			listAllSitesUI(masterPassword, dataFile)
+		case "7":
 			fmt.Println("Exiting... Goodbye!")
 			return
 		default:
@@ -247,10 +256,8 @@ func saveEntries(masterPassword, filename string, entries []Entry) error {
 		return err
 	}
 
-	// Encode to base64
 	encoded := base64.StdEncoding.EncodeToString(encryptedBytes)
 
-	// Write to file
 	err = os.WriteFile(filename, []byte(encoded), 0600)
 	if err != nil {
 		return err
@@ -259,7 +266,7 @@ func saveEntries(masterPassword, filename string, entries []Entry) error {
 	return nil
 }
 
-// addEntryUI handles the UI for adding a new entry
+// addEntryUI
 func addEntryUI(scanner *bufio.Scanner, masterPassword, dataFile string) {
 	fmt.Print("Enter site name: ")
 	var site string
@@ -349,4 +356,83 @@ func deleteEntryUI(scanner *bufio.Scanner, masterPassword, dataFile string) {
 	}
 
 	fmt.Println("Entry not found.")
+}
+
+// passwordgen stuff
+func generatePassword(length int) (string, error) {
+	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()-_=+"
+	bytes := make([]byte, length)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", err
+	}
+	for i, b := range bytes {
+		bytes[i] = charset[b%byte(len(charset))]
+	}
+	return string(bytes), nil
+}
+
+// search entry
+func searchEntriesUI(scanner *bufio.Scanner, masterPassword, dataFile string) {
+	fmt.Print("Enter keyword to search for: ")
+	if !scanner.Scan() {
+		return
+	}
+	query := strings.ToLower(strings.TrimSpace(scanner.Text()))
+
+	entries, err := loadEntries(masterPassword, dataFile)
+	if err != nil {
+		fmt.Println("Error loading entries:", err)
+		return
+	}
+
+	fmt.Printf("\nSearch results for '%s':\n", query)
+	fmt.Println(strings.Repeat("-", 30))
+	found := false
+	for _, entry := range entries {
+		if strings.Contains(strings.ToLower(entry.Site), query) {
+			fmt.Printf("Site: %-15s | User: %s\n", entry.Site, entry.Username)
+			found = true
+		}
+	}
+
+	if !found {
+		fmt.Println("No matching entries found.")
+	}
+	fmt.Println(strings.Repeat("-", 30))
+}
+
+func generatePasswordUI() {
+	fmt.Print("Enter desired password length (default 16): ")
+	var length int
+	_, err := fmt.Scanln(&length)
+	if err != nil || length <= 0 {
+		length = 16
+	}
+
+	pass, err := generatePassword(length)
+	if err != nil {
+		fmt.Println("Error generating password:", err)
+		return
+	}
+
+	fmt.Printf("\nGenerated Password: %s\n", pass)
+	fmt.Println("Copy this password and use it in the 'Add Entry' menu.")
+}
+
+func listAllSitesUI(masterPassword, dataFile string) {
+	entries, err := loadEntries(masterPassword, dataFile)
+	if err != nil {
+		fmt.Println("Error loading entries:", err)
+		return
+	}
+
+	if len(entries) == 0 {
+		fmt.Println("No entries stored yet.")
+		return
+	}
+
+	fmt.Println("\nStored Sites:")
+	for i, entry := range entries {
+		fmt.Printf("%d. %s\n", i+1, entry.Site)
+	}
 }
