@@ -1,7 +1,20 @@
-#GoPass: A Secure CLI Password Manager
+#Password-Manager-Pro
+---
+A secure, command-line based vault written in Go for managing your digital credentials. This application uses industry-standared encryption and hashing algorithms to ensure your data remanins private and protected.
+---
 
-A lightweight, Secure, and encrypted Password manager written in Golang(Go). This tool ensures that your credentials are never stored in plane text. This tool has implemented security measures that prevents your password being leaked.
+###Security Features
+-Master Password Hashing: Uses `bcrypt` to securely store hash of your master password.
 
-#Security Features
+-Key Derivation: This tool uses `argon2id` (the winner ofthe password hashing compedition ) to derrive a strong encryption key from your master password.
 
--
+-Vault Encryption: Uses AES-256-GCM(Advance Encryption Standard with Galois/Counter Mode) to provide both convidentility and intregated (authenticated encryption).
+
+-Randomness: uses `crypto/rand` for generation nouncs ands ecure passwords.
+
+---
+#Installation
+
+Go to the releases section to install
+*Make sure to choose for your specific os*
+
